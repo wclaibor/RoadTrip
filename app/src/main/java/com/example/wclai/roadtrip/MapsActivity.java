@@ -84,7 +84,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             Log.d("wclaib", latDegrees + "° " + latRef + " " + longDegrees + "° " + longRef);
             LatLng freemontTroll = new LatLng(latDegrees, longDegrees);
             mMap.addMarker(new MarkerOptions().position(freemontTroll).title("Freemont Troll"));
-            System.out.println("this is new");
+            System.out.println("this is newer");
             mMap.animateCamera(CameraUpdateFactory.newLatLng(freemontTroll));
         }
 
