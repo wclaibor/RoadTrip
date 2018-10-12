@@ -3,35 +3,31 @@ package com.example.wclai.roadtrip;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.graphics.drawable.BitmapDrawable;
+import android.os.Bundle;
 import android.os.Environment;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
-import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
+import android.view.View;
 
 import com.drew.imaging.ImageProcessingException;
+import com.drew.lang.GeoLocation;
 import com.example.wclai.roadtrip.utils.PhotoMetadataProcessor;
-import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.GoogleMap.OnMarkerClickListener;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.common.collect.Maps;
 
-import android.media.ExifInterface;
-import android.util.Log;
-
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Map;
 
-import static android.os.Environment.getExternalStorageDirectory;
-
-public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
+public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, OnMarkerClickListener, GoogleMap.InfoWindowAdapter {
 
     private GoogleMap mMap;
 
@@ -40,6 +36,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private static final int MIN_PER_DEGREE = 60;
     private static final int SEC_PER_DEGREE = 3600;
     private static final int MY_PERMISSIONS_REQUEST_READ_EXTERNAL_STORAGE = 1;
+
+    private Map<LatLng, File> locations = Maps.newHashMap();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,7 +69,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         File pictureDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
 
-        Map<LatLng, File> locations = Maps.newHashMap();
         try {
             locations = PhotoMetadataProcessor.getPhotoLocations(pictureDirectory, context);
         } catch (ImageProcessingException e) {
@@ -81,58 +78,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
 
         for (Map.Entry<LatLng, File> entry : locations.entrySet()) {
-            mMap.addMarker(new MarkerOptions().position(entry.getKey()).icon(BitmapDescriptorFactory.fromResource(R.drawable.rt_image_marker)).title(entry.getValue().getName()));
+            Marker marker = mMap.addMarker(new MarkerOptions().position(entry.getKey()).icon(BitmapDescriptorFactory.fromResource(R.drawable.rt_image_marker)).title(entry.getValue().getName()));
+            marker.setTag(entry.getKey());
         }
 
-//        InputStream in = null;
-//        try {
-//            in = getAssets().open("photos/test_photo.jpg");
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
-//
-//        ExifInterface exif = null;
-//        try {
-//            exif = new ExifInterface(in);
-//        } catch (IOException e) {
-//            Log.d("wclaib", "Didn't find the file");
-//            e.printStackTrace();
-//        }
-//        if(exif != null) {
-//            String lat = ExifInterface.TAG_GPS_LATITUDE;
-//            String latRef = exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE_REF);
-//            String longRef = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF);
-//            String lat_data = exif.getAttribute(lat);
-//            String long_data = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE);
-//            Log.d("wclaib", lat_data);
-//            Log.d("wclaib", long_data);
-//
-//            double latDegrees = exifDataToDegrees(lat_data);
-//            if (latRef.equals("S")) {
-//                latDegrees = -latDegrees;
-//            }
-//            double longDegrees = exifDataToDegrees(long_data);
-//            if (longRef.equals("W")) {
-//                longDegrees = -longDegrees;
-//            }
-//
-//
-//
-//            Log.d("wclaib", latDegrees + "° " + latRef + " " + longDegrees + "° " + longRef);
-//            LatLng freemontTroll = new LatLng(latDegrees, longDegrees);
-//            mMap.addMarker(new MarkerOptions().position(freemontTroll).title("Freemont Troll"));
-//            System.out.println("this is newer");
-//            mMap.animateCamera(CameraUpdateFactory.newLatLng(freemontTroll));
-//        }
-
-//        // Add a marker in Sydney and move the camera
-//        LatLng sydney = new LatLng(-34, 151);
-//        mMap.addMarker(new MarkerOptions().position(sydney).title("Marker in Sydney"));
-//        mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney));
-//
-//        LatLng boise = new LatLng(43.6150, -116.2023);
-//        mMap.addMarker(new MarkerOptions().position(boise).title("Marker in FreemontTroll"));
-//        mMap.animateCamera(CameraUpdateFactory.newLatLng(boise));
+        mMap.setOnMarkerClickListener(this);
+        mMap.setInfoWindowAdapter(new PhotoInfoWindow(locations));
     }
 
     private void getStoragePermissions() {
@@ -163,20 +114,23 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
     }
 
+    @Override
+    public boolean onMarkerClick(Marker marker) {
+        LatLng location = (LatLng)marker.getTag();
+        File file = locations.get(location);
 
-    // = Degrees + Minutes/60 + Seconds/3600
-    private double exifDataToDegrees(String latData) {
-        String[] pieces = latData.split(",");
+        marker.showInfoWindow();
 
-        String[] degreePieces = pieces[0].split("/");
-        double degrees = Integer.parseInt(degreePieces[0]) / Integer.parseInt(degreePieces[1]);
+        return true;
+    }
 
-        String[] minutePieces = pieces[1].split("/");
-        double minutes = Integer.parseInt(minutePieces[0]) / Integer.parseInt(minutePieces[1]);
+    @Override
+    public View getInfoWindow(Marker marker) {
+        return null;
+    }
 
-        String[] secondPieces = pieces[2].split("/");
-        double seconds = Integer.parseInt(secondPieces[0]) / Integer.parseInt(secondPieces[1]);
-
-        return degrees + (minutes / MIN_PER_DEGREE) + (seconds / SEC_PER_DEGREE);
+    @Override
+    public View getInfoContents(Marker marker) {
+        return null;
     }
 }
