@@ -3,41 +3,41 @@ package com.example.wclai.roadtrip;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Point;
 import android.os.Bundle;
-import android.os.Environment;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.support.v4.content.ContextCompat;
-import android.view.View;
 
-import com.drew.imaging.ImageProcessingException;
-import com.drew.lang.GeoLocation;
-import com.example.wclai.roadtrip.utils.PhotoMetadataProcessor;
+import com.example.wclai.roadtrip.animations.FlyoverCallback;
+import com.example.wclai.roadtrip.dao.PhotoDao;
+import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.GoogleMap.OnMarkerClickListener;
 import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.Projection;
 import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
 import java.io.File;
-import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
-public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, OnMarkerClickListener, GoogleMap.InfoWindowAdapter {
+public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, OnMarkerClickListener, GoogleMap.OnMapClickListener {
 
     private GoogleMap mMap;
 
     private MapsActivity thisActivity = this;
 
-    private static final int MIN_PER_DEGREE = 60;
-    private static final int SEC_PER_DEGREE = 3600;
     private static final int MY_PERMISSIONS_REQUEST_READ_EXTERNAL_STORAGE = 1;
 
     private Map<LatLng, File> locations = Maps.newHashMap();
+
+    private List<Marker> markers = Lists.newArrayList();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,29 +61,25 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
      */
     @Override
     public void onMapReady(GoogleMap googleMap) {
+        Context context = getApplicationContext();
         getStoragePermissions();
         mMap = googleMap;
         mMap.setMapType(GoogleMap.MAP_TYPE_SATELLITE);
 
-        Context context = getApplicationContext();
-
-        File pictureDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
-
-        try {
-            locations = PhotoMetadataProcessor.getPhotoLocations(pictureDirectory, context);
-        } catch (ImageProcessingException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        for (Map.Entry<LatLng, File> entry : locations.entrySet()) {
-            Marker marker = mMap.addMarker(new MarkerOptions().position(entry.getKey()).icon(BitmapDescriptorFactory.fromResource(R.drawable.rt_image_marker)).title(entry.getValue().getName()));
-            marker.setTag(entry.getKey());
-        }
+        locations = new PhotoDao().getPhotos(context);
 
         mMap.setOnMarkerClickListener(this);
-        mMap.setInfoWindowAdapter(new PhotoInfoWindow(locations));
+        mMap.setInfoWindowAdapter(new PhotoInfoWindow(locations, context));
+
+        for (Map.Entry<LatLng, File> entry : locations.entrySet()) {
+            Marker marker = mMap.addMarker(new MarkerOptions().position(entry.getKey()));
+            marker.setTag(entry.getKey());
+            marker.setSnippet("Test Snippet");
+
+            markers.add(marker);
+        }
+
+        startFlyover();
     }
 
     private void getStoragePermissions() {
@@ -116,21 +112,32 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     @Override
     public boolean onMarkerClick(Marker marker) {
-        LatLng location = (LatLng)marker.getTag();
-        File file = locations.get(location);
+        showMarkerInfoWindow(marker);
+        return true; // Consume the event since it was dealt with
+    }
+
+    public void showMarkerInfoWindow(Marker marker) {
+        final Projection projection = mMap.getProjection();
+        final Point markerPoint = projection.toScreenLocation(
+                marker.getPosition()
+        );
+        // Shift the point we will use to center the map
+        markerPoint.offset(10, -500);
+        final LatLng newLatLng = projection.fromScreenLocation(markerPoint);
+
+        mMap.animateCamera(CameraUpdateFactory.newLatLng(newLatLng));
 
         marker.showInfoWindow();
-
-        return true;
     }
 
     @Override
-    public View getInfoWindow(Marker marker) {
-        return null;
+    public void onMapClick(LatLng latLng) {
+        markers.forEach(Marker::hideInfoWindow);
+        mMap.stopAnimation();
     }
 
-    @Override
-    public View getInfoContents(Marker marker) {
-        return null;
+    public void startFlyover() {
+        Marker firstMarker = markers.get(0);
+        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(firstMarker.getPosition(), 10), 1000, new FlyoverCallback(mMap, markers, firstMarker));
     }
 }
