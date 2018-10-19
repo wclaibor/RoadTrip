@@ -5,11 +5,13 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Point;
 import android.os.Bundle;
+import android.os.Handler;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.support.v4.content.ContextCompat;
+import android.util.Log;
 
-import com.example.wclai.roadtrip.animations.FlyoverCallback;
+import com.example.wclai.roadtrip.animations.FlyoverRunnable;
 import com.example.wclai.roadtrip.dao.PhotoDao;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
@@ -27,7 +29,7 @@ import java.io.File;
 import java.util.List;
 import java.util.Map;
 
-public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, OnMarkerClickListener, GoogleMap.OnMapClickListener {
+public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, OnMarkerClickListener, GoogleMap.OnMapClickListener, GoogleMap.OnCameraMoveStartedListener {
 
     private GoogleMap mMap;
 
@@ -38,6 +40,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private Map<LatLng, File> locations = Maps.newHashMap();
 
     private List<Marker> markers = Lists.newArrayList();
+
+    private Runnable flyover;
+    private Handler handler = new Handler();
+    Runnable repeatFlyover;
+    Runnable restartFlyover;
+//    private ScheduledFuture flyoverScheduler;
+//    private ScheduledFuture restartFlyoverScheduler;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -70,6 +79,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         mMap.setOnMarkerClickListener(this);
         mMap.setInfoWindowAdapter(new PhotoInfoWindow(locations, context));
+        mMap.setOnMapClickListener(this);
+        mMap.setOnCameraMoveStartedListener(this);
 
         for (Map.Entry<LatLng, File> entry : locations.entrySet()) {
             Marker marker = mMap.addMarker(new MarkerOptions().position(entry.getKey()));
@@ -78,6 +89,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
             markers.add(marker);
         }
+
+        flyover = new FlyoverRunnable(mMap, markers);
 
         startFlyover();
     }
@@ -132,12 +145,32 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     @Override
     public void onMapClick(LatLng latLng) {
-        markers.forEach(Marker::hideInfoWindow);
-        mMap.stopAnimation();
+        Log.d("wclaibor", "map clicked");
+        startPause();
+
     }
 
     public void startFlyover() {
-        Marker firstMarker = markers.get(0);
-        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(firstMarker.getPosition(), 10), 1000, new FlyoverCallback(mMap, markers, firstMarker));
+        handler.postDelayed(repeatFlyover = () -> {
+            flyover.run();
+            handler.postDelayed(repeatFlyover, 10000);
+        }, 0);
+
+    }
+
+    @Override
+    public void onCameraMoveStarted(int reason) {
+        if (reason == GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE) {
+            startPause();
+        }
+    }
+
+    public void startPause() {
+        markers.forEach(Marker::hideInfoWindow);
+        mMap.stopAnimation();
+        handler.removeCallbacks(repeatFlyover);
+        handler.removeCallbacks(restartFlyover);
+
+        handler.postDelayed(restartFlyover = () -> startFlyover(), 10000);
     }
 }
